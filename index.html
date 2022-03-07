@@ -1,0 +1,370 @@
+<!--     
+    Calculate custom resolutions that are extremely close to your native aspect ratio.
+
+    Copyright (C) 2022 Christopher Falck
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+-->
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Aspect Ratio Calculator</title>
+    <meta name="description" content="Find precise aspect ratio matches for custom resolutions" />
+    <meta name="author" content="Christopher Falck" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+  </head>
+  <body>
+    <h6>
+      Created by Chris Falck. Licenced under
+      <a target="_blank" href="https://www.gnu.org/licenses/gpl-3.0.en.html">GNU GPLv3</a>. See the
+      <a target="_blank" href="https://github.com/chrisfalck/AspectRatioCalculator">github repo</a>
+      for source.
+    </h6>
+    <h3 id="SummaryHeader"></h3>
+    <div>
+      <form>
+        <label>Native</label><br />
+        <input type="number" id="nativeWidth" name="nativeWidth" /> X
+        <input type="number" id="nativeHeight" name="nativeHeight" />
+        <br />
+        <br />
+
+        <label>Lower Bound</label><br />
+        <input type="number" id="lowerBoundSearchWidth" name="lowerBoundSearchWidth" /> X
+        <input type="number" id="lowerBoundSearchHeight" name="lowerBoundSearchHeight" />
+        <br />
+        <br />
+
+        <label>Upper Bound</label><br />
+        <input type="number" id="upperBoundSearchHeight" name="upperBoundSearchHeight" /> X
+        <input type="number" id="upperBoundSearchWidth" name="upperBoundSearchWidth" />
+        <br />
+        <br />
+
+        <label>Minimum Result Neighbor Distance</label><br />
+        <input type="number" id="minimumNeighborDistance" name="minimumNeighborDistance" />
+      </form>
+
+      <button
+        id="UpdateSettingsButton"
+        class="updateSettingsButton"
+        onclick="onUpdateSettings()"
+        onkeydown="onUpdateSettings()"
+      >
+        <strong>Search</strong>
+      </button>
+    </div>
+
+    <br />
+
+    <h3 id="ResultsHeader">Results</h3>
+    <div class="borderRadiusWrapper">
+      <div class="resultsTableWrapper">
+        <table id="resultsTable">
+          <tr>
+            <th>Width</th>
+            <th>Height</th>
+            <th>Scaling Factor</th>
+          </tr>
+        </table>
+      </div>
+    </div>
+    <br />
+    <span>v1.0.0</span>
+
+    <script>
+      // Based on https://docs.microsoft.com/en-us/sharepoint/dev/declarative-customization/site-theming/sharepoint-site-theming-json-schema#dark-blue-theme
+      const colors = {
+        themeLighter: "#001318",
+        themeLight: "#002630",
+        themeSecondary: "#00abda",
+        themeTertiary: "#005066",
+
+        neutralSecondaryAlt: "#d0d0d0",
+      };
+
+      const toFixedFormat = (n) => n.toFixed(16).toString();
+
+      function* generateResults() {
+        const nativeMult = nativeWidth * nativeHeight;
+        let rowIndex = 1;
+        let countProcessed = 0;
+        for (let i = lowerBoundSearchWidth; i <= upperBoundSearchWidth; ++i) {
+          for (let j = lowerBoundSearchHeight; j <= upperBoundSearchHeight; ++j) {
+            ++countProcessed;
+            if (toFixedFormat(i / j) === nativeRatio) {
+              const yieldValues = [rowIndex++, ((i * j) / nativeMult).toFixed(4), i, j];
+              i += minimumNeighborDistance - 1;
+              j += minimumNeighborDistance - 1;
+              yield yieldValues;
+            }
+          }
+        }
+        return [rowIndex - 1, countProcessed];
+      }
+
+      const updateResultsTable = () => {
+        const table = document.getElementById("resultsTable");
+
+        // First clear.
+        try {
+          for (let i = 1; i < Number.MAX_SAFE_INTEGER; ++i) {
+            table.deleteRow(1);
+          }
+        } catch {}
+
+        let iter = generateResults();
+        let currentResult = { value: undefined, done: false };
+
+        while (!(currentResult = iter.next()).done) {
+          let [rowIndex, scalingFactor, width, height] = currentResult.value;
+          const row = table.insertRow(rowIndex);
+          const cell0 = row.insertCell(0);
+          const cell1 = row.insertCell(1);
+          const cell2 = row.insertCell(2);
+          cell0.innerText = `${width}`;
+          cell1.innerText = `${height}`;
+          cell2.innerText = `${scalingFactor} × ${nativeWidth}x${nativeHeight}`;
+        }
+
+        const [countMatches, countProcessed] = currentResult.value;
+
+        updateResultsHeader(countMatches, countProcessed);
+      };
+
+      const onUpdateSettings = () => {
+        readForm();
+        updateSummaryHeader();
+        updateResultsTable();
+      };
+
+      const updateSummaryHeader = () => {
+        document.getElementById(
+          "SummaryHeader"
+        ).innerText = `Resolutions from ${lowerBoundSearchWidth}x${lowerBoundSearchHeight} to ${upperBoundSearchWidth}x${upperBoundSearchHeight} matching aspect ratio ${nativeRatio} from ${nativeWidth}x${nativeHeight}`;
+      };
+
+      const updateResultsHeader = (numberOfResults, totalProcessed) => {
+        document.getElementById(
+          "ResultsHeader"
+        ).innerText = `${numberOfResults} results from ${totalProcessed} checked resolutions`;
+      };
+
+      const readForm = () => {
+        nativeWidth = Math.max(
+          Math.floor(parseInt(document.getElementById("nativeWidth").value)),
+          1
+        );
+        nativeHeight = Math.max(
+          Math.floor(parseInt(document.getElementById("nativeHeight").value)),
+          1
+        );
+
+        // Let's update this now so we don't forget.
+        nativeRatio = toFixedFormat(nativeWidth / nativeHeight);
+
+        lowerBoundSearchWidth = Math.max(
+          Math.floor(parseInt(document.getElementById("lowerBoundSearchWidth").value)),
+          1
+        );
+        upperBoundSearchWidth = Math.max(
+          Math.floor(parseInt(document.getElementById("upperBoundSearchWidth").value)),
+          1
+        );
+        lowerBoundSearchHeight = Math.max(
+          Math.floor(parseInt(document.getElementById("lowerBoundSearchHeight").value)),
+          1
+        );
+        upperBoundSearchHeight = Math.max(
+          Math.floor(parseInt(document.getElementById("upperBoundSearchHeight").value)),
+          1
+        );
+        minimumNeighborDistance = Math.max(
+          Math.floor(parseInt(document.getElementById("minimumNeighborDistance").value)),
+          1
+        );
+
+        // Show the user any input corrections we made.
+        updateForm(
+          nativeWidth,
+          nativeHeight,
+          lowerBoundSearchWidth,
+          upperBoundSearchWidth,
+          lowerBoundSearchHeight,
+          upperBoundSearchHeight,
+          minimumNeighborDistance
+        );
+      };
+
+      const updateForm = (
+        nativeWidth,
+        nativeHeight,
+        lowerBoundSearchWidth,
+        upperBoundSearchWidth,
+        lowerBoundSearchHeight,
+        upperBoundSearchHeight,
+        minimumNeighborDistance
+      ) => {
+        document.getElementById("nativeWidth").value = nativeWidth;
+        document.getElementById("nativeHeight").value = nativeHeight;
+        document.getElementById("lowerBoundSearchWidth").value = lowerBoundSearchWidth;
+        document.getElementById("upperBoundSearchWidth").value = upperBoundSearchWidth;
+        document.getElementById("lowerBoundSearchHeight").value = lowerBoundSearchHeight;
+        document.getElementById("upperBoundSearchHeight").value = upperBoundSearchHeight;
+        document.getElementById("minimumNeighborDistance").value = minimumNeighborDistance;
+      };
+
+      const applyStyles = () => {
+        const css = `
+          body {
+            font-family: 'Courier New', Courier, monospace;
+            font-weight: bold;
+            background: ${colors.themeLighter};
+            color: ${colors.neutralSecondaryAlt};
+            margin: auto;
+            width: 75vw;
+          }
+          
+          a {
+            color: ${colors.themeSecondary}
+          }
+
+          table {
+            font-family: 'Courier New', Courier, monospace;
+            font-weight: bold;
+            border-collapse: collapse;
+            width: 100%;
+          }
+
+          tr:nth-child(odd){background-color: ${colors.themeLight};}
+
+          th {
+            position: sticky;
+            top: 0;
+            text-align: left;
+            background-color: ${colors.themeTertiary};
+            color: ${colors.neutralSecondaryAlt};
+          }
+
+          td, th {
+            padding: 8px;
+          }
+
+          label {
+            display: inline-block;
+            width: auto;
+            margin-left: 5px;
+            padding-bottom: 2px;
+          }
+
+          form {
+            padding: 10px 10px 20px 0;
+          }
+
+          input {
+            background-color: ${colors.themeLight};
+            border-radius: 8px;
+            border: 1px solid ${colors.themeSecondary};
+            color: ${colors.neutralSecondaryAlt};
+            padding: 5px;
+          }
+
+          .borderRadiusWrapper {
+            border: 1px solid ${colors.themeSecondary};
+            border-radius: 8px;
+            overflow: hidden;
+          }
+
+          .resultsTableWrapper {
+            height: 35vh;
+            overflow: auto;
+          }
+
+          .updateSettingsButton {
+            background-color: ${colors.themeLight};
+            padding: 10px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: medium;
+            border-radius: 8px;
+            border: 1px solid ${colors.themeSecondary};
+            color: ${colors.neutralSecondaryAlt};
+            cursor: pointer;
+          }
+
+          .resultsDiv {
+            background-color: ${colors.themeLight};
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid ${colors.themeSecondary};
+            color: ${colors.neutralSecondaryAlt};
+          }
+        `;
+
+        const styleTag = document.createElement("style");
+        styleTag.type = "text/css";
+        styleTag.appendChild(document.createTextNode(css));
+
+        document.head.appendChild(styleTag);
+      };
+
+      let nativeWidth;
+      let nativeHeight;
+      let nativeRatio;
+      let lowerBoundSearchWidth;
+      let upperBoundSearchWidth;
+      let lowerBoundSearchHeight;
+      let upperBoundSearchHeight;
+      let minimumNeighborDistance;
+
+      window.onload = () => {
+        // Assign defaults to variables of interest for first run.
+        try {
+          // https://stackoverflow.com/a/12846935/3135704
+          nativeWidth = Math.floor(window.screen.width * window.devicePixelRatio);
+          nativeHeight = Math.floor(window.screen.height * window.devicePixelRatio);
+          nativeRatio = toFixedFormat(nativeWidth / nativeHeight);
+        } catch {
+          nativeWidth = 1920;
+          nativeHeight = 1080;
+          nativeRatio = toFixedFormat(nativeWidth / nativeHeight);
+        }
+
+        minimumNeighborDistance = 100;
+
+        lowerBoundSearchWidth = Math.max(nativeWidth - 1_000, 0);
+        upperBoundSearchWidth = Math.min(nativeWidth + 1_000, 50_000);
+
+        lowerBoundSearchHeight = Math.max(nativeHeight - 1_000, 0);
+        upperBoundSearchHeight = Math.min(nativeHeight + 1_000, 50_000);
+
+        applyStyles();
+        updateSummaryHeader();
+        updateForm(
+          nativeWidth,
+          nativeHeight,
+          lowerBoundSearchWidth,
+          upperBoundSearchWidth,
+          lowerBoundSearchHeight,
+          upperBoundSearchHeight,
+          minimumNeighborDistance
+        );
+        updateResultsTable();
+      };
+    </script>
+  </body>
+</html>
